@@ -8,3 +8,4 @@ python-jose[cryptography]
 pydantic[email]
 python-multipart
 httpx
+pyflakes
