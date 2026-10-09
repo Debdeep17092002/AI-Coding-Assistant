@@ -70,7 +70,7 @@ AI-Coding-Assistant/
 **1. AI models**
 
 ```bash
-ollama pull qwen2.5-coder:3b
+ollama pull qwen2.5-coder:1.5b
 ollama pull nomic-embed-text
 ```
 
