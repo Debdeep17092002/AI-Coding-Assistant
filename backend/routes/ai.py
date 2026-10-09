@@ -14,6 +14,8 @@ from services import prompt_manager as pm
 from services.ai_service import AIServiceError, ask_ai, stream_ai
 from services.embedding_service import EmbeddingError, search_index, sync_index
 
+from pydantic import BaseModel, ConfigDict
+
 router = APIRouter(prefix="/ai", tags=["ai"])
 logger = logging.getLogger(__name__)
 
@@ -49,11 +51,10 @@ class AIResponse(BaseModel):
 
 
 class HistoryItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     role: str
     content: str
-
-    class Config:
-        from_attributes = True
 
 
 class SearchHit(BaseModel):

@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from database.database import get_db
 from database.models import User
 
+from pydantic import BaseModel, ConfigDict, EmailStr
+
 load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -34,11 +36,10 @@ class RegisterRequest(BaseModel):
 
 
 class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     email: EmailStr
-
-    class Config:
-        from_attributes = True
 
 
 class TokenOut(BaseModel):

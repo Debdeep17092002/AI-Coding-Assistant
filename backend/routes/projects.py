@@ -9,6 +9,8 @@ from database.database import get_db
 from database.models import CodeFile, Project, User
 from routes.auth import get_current_user
 
+from pydantic import BaseModel, ConfigDict
+
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
@@ -24,13 +26,12 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     description: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class FileCreate(BaseModel):
@@ -46,15 +47,14 @@ class FileUpdate(BaseModel):
 
 
 class FileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     project_id: int
     filename: str
     language: str
     content: str
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 # ---------- helpers ----------
