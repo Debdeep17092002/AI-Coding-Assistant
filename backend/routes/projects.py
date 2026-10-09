@@ -98,3 +98,110 @@ def list_projects(db: Session = Depends(get_db), user: User = Depends(get_curren
         .all()
     )
     return projects
+
+
+@router.get("/{project_id}", response_model=ProjectOut)
+def get_project(
+    project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    return get_owned_project(project_id, db, user)
+
+
+@router.put("/{project_id}", response_model=ProjectOut)
+def update_project(
+    project_id: int,
+    data: ProjectUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    project = get_owned_project(project_id, db, user)
+    if data.name is not None:
+        project.name = data.name.strip()
+    if data.description is not None:
+        project.description = data.description
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+@router.delete("/{project_id}", status_code=204)
+def delete_project(
+    project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    project = get_owned_project(project_id, db, user)
+    db.delete(project)
+    db.commit()
+
+
+# ---------- file endpoints ----------
+@router.post("/{project_id}/files", response_model=FileOut, status_code=201)
+def create_file(
+    project_id: int,
+    data: FileCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    project = get_owned_project(project_id, db, user)
+    code_file = CodeFile(
+        project_id=project.id,
+        filename=data.filename,
+        language=data.language,
+        content=data.content,
+    )
+    db.add(code_file)
+    db.commit()
+    db.refresh(code_file)
+    return code_file
+
+
+@router.get("/{project_id}/files", response_model=List[FileOut])
+def list_files(
+    project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    project = get_owned_project(project_id, db, user)
+    return project.files
+
+
+@router.get("/{project_id}/files/{file_id}", response_model=FileOut)
+def get_file(
+    project_id: int,
+    file_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    project = get_owned_project(project_id, db, user)
+    return get_project_file(file_id, project, db)
+
+
+@router.put("/{project_id}/files/{file_id}", response_model=FileOut)
+def update_file(
+    project_id: int,
+    file_id: int,
+    data: FileUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    project = get_owned_project(project_id, db, user)
+    code_file = get_project_file(file_id, project, db)
+    if data.filename is not None:
+        code_file.filename = data.filename
+    if data.language is not None:
+        code_file.language = data.language
+    if data.content is not None:
+        code_file.content = data.content
+    db.commit()
+    db.refresh(code_file)
+    return code_file
+
+
+@router.delete("/{project_id}/files/{file_id}", status_code=204)
+def delete_file(
+    project_id: int,
+    file_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    project = get_owned_project(project_id, db, user)
+    code_file = get_project_file(file_id, project, db)
+    db.delete(code_file)
+    db.commit()
