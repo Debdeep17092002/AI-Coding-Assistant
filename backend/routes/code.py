@@ -1,3 +1,4 @@
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/code", tags=["code"])
 
 SUPPORTED = {"python", "javascript"}
 ALIASES = {"py": "python", "python3": "python", "js": "javascript", "node": "javascript"}
+RUNNER_ENABLED = os.getenv("ENABLE_CODE_RUNNER", "true").lower() == "true"
 
 
 # ---------- schemas ----------
@@ -64,6 +66,8 @@ def prepare(data: CodeInput) -> str:
 
 
 def do_run(code: str, language: str) -> dict:
+    if not RUNNER_ENABLED:
+        raise HTTPException(403, "Code execution is disabled on this server.")
     try:
         return run_code(code, language)
     except RunnerBusy as e:

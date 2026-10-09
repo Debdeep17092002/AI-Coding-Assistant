@@ -87,6 +87,8 @@ def get_current_user(
 def register(data: RegisterRequest, db: Session = Depends(get_db)):
     if len(data.password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters")
+    if len(data.password.encode("utf-8")) > 72:
+        raise HTTPException(400, "Password must be at most 72 bytes")
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(400, "Email already registered")
 
