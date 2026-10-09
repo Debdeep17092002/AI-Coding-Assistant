@@ -1,3 +1,4 @@
+import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,13 +7,15 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database.database import SessionLocal, get_db
-from database.models import ChatMessage, User
+from database.models import ChatMessage, Project, User
 from routes.auth import get_current_user
 from routes.projects import get_owned_project
 from services import prompt_manager as pm
 from services.ai_service import AIServiceError, ask_ai, stream_ai
+from services.embedding_service import EmbeddingError, search_index, sync_index
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+logger = logging.getLogger(__name__)
 
 
 # ---------- schemas ----------
@@ -32,6 +35,13 @@ class ChatRequest(BaseModel):
     message: str
     code: Optional[str] = None
     language: str = "python"
+    use_project: bool = True
+
+
+class SearchRequest(BaseModel):
+    project_id: int
+    query: str
+    k: int = 4
 
 
 class AIResponse(BaseModel):
@@ -44,6 +54,20 @@ class HistoryItem(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SearchHit(BaseModel):
+    filename: str
+    start_line: int
+    end_line: int
+    score: float
+    text: str
+
+
+class IndexOut(BaseModel):
+    files: int
+    chunks: int
+    re_embedded_files: int
 
 
 # ---------- helpers ----------
@@ -62,6 +86,22 @@ def run_ai(prompt_name: str, user_message: str) -> AIResponse:
         raise HTTPException(500, str(e))
     except AIServiceError as e:
         raise HTTPException(502, str(e))
+
+
+def project_files(project: Project) -> List[dict]:
+    return [{"id": f.id, "filename": f.filename, "content": f.content} for f in project.files]
+
+
+def project_context(project: Project, query: str) -> str:
+    """Find relevant chunks of the project's files. Never breaks the chat if it fails."""
+    if not project.files:
+        return ""
+    try:
+        sync_index(project.id, project_files(project))
+        return pm.build_context_block(search_index(project.id, query))
+    except Exception as e:  # retrieval is optional, so the chat continues without it
+        logger.warning("Project context unavailable: %s", e)
+        return ""
 
 
 def load_history(db: Session, project_id: int, limit: int = 10) -> List[dict]:
@@ -113,7 +153,7 @@ def generate(data: GenerateRequest, user: User = Depends(get_current_user)):
     return run_ai("generate_code", pm.build_generate_message(data.request, data.language))
 
 
-# ---------- chat with memory ----------
+# ---------- chat with memory + project context ----------
 @router.post("/chat", response_model=AIResponse)
 def chat(
     data: ChatRequest,
@@ -123,8 +163,12 @@ def chat(
     project = get_owned_project(data.project_id, db, user)
     guard_size(data.message, data.code)
 
+    context = project_context(project, data.message) if data.use_project else ""
     messages = load_history(db, project.id) + [
-        {"role": "user", "content": pm.build_chat_message(data.message, data.code, data.language)}
+        {
+            "role": "user",
+            "content": pm.build_chat_message(data.message, data.code, data.language, context),
+        }
     ]
     try:
         reply = ask_ai(pm.load_system_prompt("chat"), messages)
@@ -133,7 +177,7 @@ def chat(
     except AIServiceError as e:
         raise HTTPException(502, str(e))
 
-    # save only after success, so a failed call leaves no orphan message
+    # save only the plain message (not the retrieved context), and only after success
     db.add(ChatMessage(project_id=project.id, role="user", content=data.message))
     db.add(ChatMessage(project_id=project.id, role="assistant", content=reply))
     db.commit()
@@ -151,8 +195,12 @@ def chat_stream(
 
     project_id = project.id
     user_text = data.message
+    context = project_context(project, data.message) if data.use_project else ""
     messages = load_history(db, project_id) + [
-        {"role": "user", "content": pm.build_chat_message(data.message, data.code, data.language)}
+        {
+            "role": "user",
+            "content": pm.build_chat_message(data.message, data.code, data.language, context),
+        }
     ]
     try:
         system = pm.load_system_prompt("chat")
@@ -186,3 +234,35 @@ def history(
         .order_by(ChatMessage.id)
         .all()
     )
+
+
+# ---------- project index (RAG) ----------
+@router.post("/index/{project_id}", response_model=IndexOut)
+def reindex(
+    project_id: int,
+    force: bool = False,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Update the project's index. Use force=true to rebuild it from scratch."""
+    project = get_owned_project(project_id, db, user)
+    try:
+        return sync_index(project.id, project_files(project), force=force)
+    except EmbeddingError as e:
+        raise HTTPException(502, str(e))
+
+
+@router.post("/search", response_model=List[SearchHit])
+def search(
+    data: SearchRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Debug tool: shows which chunks the assistant would retrieve for a question."""
+    project = get_owned_project(data.project_id, db, user)
+    guard_size(data.query)
+    try:
+        sync_index(project.id, project_files(project))
+        return search_index(project.id, data.query, k=max(1, min(data.k, 10)))
+    except EmbeddingError as e:
+        raise HTTPException(502, str(e))

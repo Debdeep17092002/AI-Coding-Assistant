@@ -7,6 +7,7 @@ export default function ChatBox({ projectId, getCode, language }) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [includeCode, setIncludeCode] = useState(true);
+  const [useProject, setUseProject] = useState(true);
   const [error, setError] = useState("");
   const bottomRef = useRef(null);
 
@@ -41,6 +42,7 @@ export default function ChatBox({ projectId, getCode, language }) {
           message: text,
           code: includeCode ? getCode() : null,
           language,
+          use_project: useProject,
         },
         (chunk) => {
           setMessages((prev) => {
@@ -84,14 +86,24 @@ export default function ChatBox({ projectId, getCode, language }) {
       </div>
       {error && <div className="error">{error}</div>}
       <div className="chat-input">
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={includeCode}
-            onChange={(e) => setIncludeCode(e.target.checked)}
-          />
-          Include my code
-        </label>
+        <div className="row">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={includeCode}
+              onChange={(e) => setIncludeCode(e.target.checked)}
+            />
+            Include open file
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={useProject}
+              onChange={(e) => setUseProject(e.target.checked)}
+            />
+            Use project files
+          </label>
+        </div>
         <div className="row">
           <input
             value={input}

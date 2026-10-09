@@ -18,3 +18,4 @@ dist/
 .env
 venv/
 *.db
+ai/embeddings/*.json
